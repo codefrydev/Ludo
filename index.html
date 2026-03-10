@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Classic Ludo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Base UI & Board styles */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0fdf4; touch-action: manipulation; }
+        .aspect-square { aspect-ratio: 1 / 1; }
+        
+        /* Token Animations & Interaction */
+        .token {
+            transition: top 0.3s ease-in-out, left 0.3s ease-in-out, transform 0.3s ease, box-shadow 0.2s ease;
+            cursor: default;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); transform: translate(-50%, -50%) scale(1.1); }
+            50% { box-shadow: 0 0 15px 8px currentColor; transform: translate(-50%, -50%) scale(1.25); }
+        }
+        .valid-move {
+            cursor: pointer;
+            animation: pulse-glow 1.5s infinite;
+            z-index: 50 !important;
+        }
+        .valid-move:hover { filter: brightness(1.2); }
+
+        /* Dice Rolling Animation */
+        @keyframes roll-dice {
+            0% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(90deg) scale(1.2); }
+            50% { transform: rotate(180deg) scale(0.9); }
+            75% { transform: rotate(270deg) scale(1.1); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+        .rolling { animation: roll-dice 0.4s ease-out; }
+
+        /* Grid specific tweaks */
+        .safe-star { font-size: 1.2rem; line-height: 1; opacity: 0.4; }
+        @media (max-width: 600px) { .safe-star { font-size: 0.8rem; } }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800 flex flex-col items-center p-2 md:p-6 bg-slate-50">
+
+    <!-- Header -->
+    <div class="w-full max-w-4xl flex justify-between items-center mb-4 px-2">
+        <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-800">LUDO</h1>
+        <div class="flex gap-2">
+            <div id="status-indicator" class="px-4 py-2 rounded-full font-bold text-white shadow transition-colors bg-red-500">
+                Red's Turn
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game Area -->
+    <div class="w-full max-w-4xl flex flex-col md:flex-row gap-6 items-start">
+        
+        <!-- Board Container -->
+        <div class="w-full max-w-2xl flex-shrink-0 bg-white p-2 rounded-xl shadow-2xl">
+            <div id="board" class="relative w-full aspect-square bg-gray-200 border-4 border-gray-800 rounded-md overflow-hidden">
+                <!-- Grid Cells & Visuals injected via JS -->
+                <!-- Tokens injected via JS -->
+            </div>
+        </div>
+
+        <!-- Sidebar / Controls -->
+        <div class="w-full md:flex-1 bg-white p-6 rounded-xl shadow-xl flex flex-col items-center">
+            
+            <div class="mb-6 w-full text-center">
+                <h2 class="text-lg font-bold text-gray-500 uppercase tracking-widest mb-2">Dice</h2>
+                
+                <!-- Dice Visual -->
+                <button id="dice-btn" class="relative w-24 h-24 mx-auto bg-slate-100 border-4 border-slate-300 rounded-2xl shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed group">
+                    <div id="dice-face" class="grid grid-cols-3 grid-rows-3 gap-1 w-16 h-16 p-1">
+                        <!-- Dots injected via JS -->
+                    </div>
+                </button>
+            </div>
+
+            <!-- Game Log / Messages -->
+            <div class="w-full bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
+                <p id="game-message" class="text-center font-medium text-slate-700 min-h-[3rem] flex items-center justify-center">
+                    Roll the dice to start the game!
+                </p>
+            </div>
+
+            <!-- Stats -->
+            <div class="w-full grid grid-cols-2 gap-3 mt-auto">
+                <div id="stat-0" class="bg-red-50 border-l-4 border-red-500 p-2 rounded transition-opacity">
+                    <p class="text-xs text-slate-500 font-bold">RED</p>
+                    <p id="score-0" class="font-black text-lg text-red-700">0/4 Home</p>
+                </div>
+                <div id="stat-1" class="bg-green-50 border-l-4 border-green-500 p-2 rounded transition-opacity">
+                    <p class="text-xs text-slate-500 font-bold">GREEN</p>
+                    <p id="score-1" class="font-black text-lg text-green-700">0/4 Home</p>
+                </div>
+                <div id="stat-2" class="bg-yellow-50 border-l-4 border-yellow-500 p-2 rounded transition-opacity">
+                    <p class="text-xs text-slate-500 font-bold">YELLOW</p>
+                    <p id="score-2" class="font-black text-lg text-yellow-700">0/4 Home</p>
+                </div>
+                <div id="stat-3" class="bg-blue-50 border-l-4 border-blue-500 p-2 rounded transition-opacity">
+                    <p class="text-xs text-slate-500 font-bold">BLUE</p>
+                    <p id="score-3" class="font-black text-lg text-blue-700">0/4 Home</p>
+                </div>
+            </div>
+
+            <!-- Reset -->
+            <button onclick="showSetup()" class="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg transition">
+                Restart Game
+            </button>
+        </div>
+    </div>
+
+    <!-- Celebration Overlay -->
+    <div id="win-overlay" class="hidden fixed inset-0 z-[100] bg-black/80 flex-col items-center justify-center backdrop-blur-sm">
+        <h2 id="win-text" class="text-6xl font-black text-white mb-8 animate-bounce text-center drop-shadow-2xl"></h2>
+        <button onclick="showSetup(); document.getElementById('win-overlay').classList.add('hidden')" class="px-8 py-4 bg-white text-black font-bold text-xl rounded-full hover:scale-105 transition">Play Again</button>
+    </div>
+
+    <!-- Setup Overlay -->
+    <div id="setup-overlay" class="fixed inset-0 z-[110] bg-slate-900/90 flex flex-col items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 md:p-8 w-full max-w-md">
+            <h2 class="text-3xl font-black text-slate-800 mb-6 text-center">Game Setup</h2>
+            <div class="space-y-4 mb-8">
+                <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+                    <span class="font-bold text-red-600">Red Player</span>
+                    <select id="p0-type" class="bg-white border border-slate-300 rounded p-1 font-medium text-slate-700 outline-none">
+                        <option value="human">Human</option>
+                        <option value="bot">Bot</option>
+                    </select>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                    <span class="font-bold text-green-600">Green Player</span>
+                    <select id="p1-type" class="bg-white border border-slate-300 rounded p-1 font-medium text-slate-700 outline-none">
+                        <option value="human">Human</option>
+                        <option value="bot" selected>Bot</option>
+                        <option value="none">None</option>
+                    </select>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <span class="font-bold text-yellow-600">Yellow Player</span>
+                    <select id="p2-type" class="bg-white border border-slate-300 rounded p-1 font-medium text-slate-700 outline-none">
+                        <option value="bot">Bot</option>
+                        <option value="human">Human</option>
+                        <option value="none" selected>None</option>
+                    </select>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <span class="font-bold text-blue-600">Blue Player</span>
+                    <select id="p3-type" class="bg-white border border-slate-300 rounded p-1 font-medium text-slate-700 outline-none">
+                        <option value="none" selected>None</option>
+                        <option value="human">Human</option>
+                        <option value="bot">Bot</option>
+                    </select>
+                </div>
+            </div>
+            <p id="setup-error" class="text-red-500 font-bold text-center mb-4 hidden">Need at least 2 players!</p>
+            <button onclick="startGame()" class="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xl rounded-xl transition shadow-lg">
+                Start Game
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS & CONFIGURATION ---
+        const CELL_PCT = 100 / 15;
+        
+        // Logical coordinates for exactly 52 path steps surrounding the cross
+        const PATH = [
+            [6,1], [6,2], [6,3], [6,4], [6,5], [5,6], [4,6], [3,6], [2,6], [1,6], [0,6], [0,7], [0,8], 
+            [1,8], [2,8], [3,8], [4,8], [5,8], [6,9], [6,10], [6,11], [6,12], [6,13], [6,14], [7,14], [8,14], 
+            [8,13], [8,12], [8,11], [8,10], [8,9], [9,8], [10,8], [11,8], [12,8], [13,8], [14,8], [14,7], [14,6], 
+            [13,6], [12,6], [11,6], [10,6], [9,6], [8,5], [8,4], [8,3], [8,2], [8,1], [8,0], [7,0], [6,0]
+        ];
+
+        // Safe Squares indices on the PATH array
+        const SAFE_SQUARES = [0, 8, 13, 21, 26, 34, 39, 47];
+
+        // Center Finish Square
+        const CENTER = [7, 7];
+
+        // Player Configurations
+        const PLAYERS = [
+            { 
+                id: 0, color: 'Red', hex: '#ef4444', css: 'bg-red-500', type: 'human',
+                offset: 0, // Path entry point index
+                baseCoords: [[1.5, 1.5], [1.5, 3.5], [3.5, 1.5], [3.5, 3.5]], // X,Y centers within base
+                homePath: [[7,1], [7,2], [7,3], [7,4], [7,5]]
+            },
+            { 
+                id: 1, color: 'Green', hex: '#22c55e', css: 'bg-green-500', type: 'bot',
+                offset: 13, 
+                baseCoords: [[1.5, 10.5], [1.5, 12.5], [3.5, 10.5], [3.5, 12.5]],
+                homePath: [[1,7], [2,7], [3,7], [4,7], [5,7]]
+            },
+            { 
+                id: 2, color: 'Yellow', hex: '#eab308', css: 'bg-yellow-500', type: 'none',
+                offset: 26, 
+                baseCoords: [[10.5, 10.5], [10.5, 12.5], [12.5, 10.5], [12.5, 12.5]],
+                homePath: [[7,13], [7,12], [7,11], [7,10], [7,9]]
+            },
+            { 
+                id: 3, color: 'Blue', hex: '#3b82f6', css: 'bg-blue-500', type: 'none',
+                offset: 39, 
+                baseCoords: [[10.5, 1.5], [10.5, 3.5], [12.5, 1.5], [12.5, 3.5]],
+                homePath: [[13,7], [12,7], [11,7], [10,7], [9,7]]
+            }
+        ];
+
+        // --- GAME STATE ---
+        let state = {
+            turn: 0, // 0=Red, 1=Green, 2=Yellow, 3=Blue
+            dice: null,
+            phase: 'ROLL', // 'ROLL', 'MOVE', 'ANIMATING'
+            consecutiveSixes: 0,
+            tokens: [] // [playerIdx][tokenIdx] = progress (0: base, 1-51: path, 52-56: home path, 57: finished)
+        };
+
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        // --- DOM ELEMENTS ---
+        const uiBoard = document.getElementById('board');
+        const uiDiceBtn = document.getElementById('dice-btn');
+        const uiDiceFace = document.getElementById('dice-face');
+        const uiMessage = document.getElementById('game-message');
+        const uiStatus = document.getElementById('status-indicator');
+        
+        // --- INITIALIZATION ---
+        function drawBoardBackground() {
+            uiBoard.innerHTML = ''; // Clear
+
+            // Draw Base Quadrants visually
+            const baseVisuals = [
+                { css: 'bg-red-500', r: 0, c: 0 },
+                { css: 'bg-green-500', r: 0, c: 9 },
+                { css: 'bg-yellow-500', r: 9, c: 9 },
+                { css: 'bg-blue-500', r: 9, c: 0 }
+            ];
+
+            baseVisuals.forEach(b => {
+                let quad = document.createElement('div');
+                quad.className = `absolute ${b.css} border border-gray-800`;
+                quad.style.top = (b.r * CELL_PCT) + '%';
+                quad.style.left = (b.c * CELL_PCT) + '%';
+                quad.style.width = (6 * CELL_PCT) + '%';
+                quad.style.height = (6 * CELL_PCT) + '%';
+                
+                let inner = document.createElement('div');
+                inner.className = 'absolute bg-white inset-[15%] rounded-lg shadow-inner';
+                quad.appendChild(inner);
+
+                // Draw empty token slots visually
+                const slots = [[25, 25], [25, 75], [75, 25], [75, 75]];
+                slots.forEach(s => {
+                    let slot = document.createElement('div');
+                    slot.className = 'absolute w-[25%] h-[25%] border-2 border-gray-300 rounded-full bg-gray-100 transform -translate-x-1/2 -translate-y-1/2';
+                    slot.style.top = s[0] + '%'; slot.style.left = s[1] + '%';
+                    inner.appendChild(slot);
+                });
+
+                uiBoard.appendChild(quad);
+            });
+
+            // Draw Center
+            let centerDiv = document.createElement('div');
+            centerDiv.className = 'absolute overflow-hidden';
+            centerDiv.style.top = (6 * CELL_PCT) + '%';
+            centerDiv.style.left = (6 * CELL_PCT) + '%';
+            centerDiv.style.width = (3 * CELL_PCT) + '%';
+            centerDiv.style.height = (3 * CELL_PCT) + '%';
+            // Use CSS polygons to make the center triangle colored
+            centerDiv.innerHTML = `
+                <div class="absolute inset-0 bg-red-500" style="clip-path: polygon(0 0, 50% 50%, 0 100%)"></div>
+                <div class="absolute inset-0 bg-green-500" style="clip-path: polygon(0 0, 100% 0, 50% 50%)"></div>
+                <div class="absolute inset-0 bg-yellow-500" style="clip-path: polygon(100% 0, 100% 100%, 50% 50%)"></div>
+                <div class="absolute inset-0 bg-blue-500" style="clip-path: polygon(0 100%, 100% 100%, 50% 50%)"></div>
+            `;
+            uiBoard.appendChild(centerDiv);
+
+            // Draw Paths
+            PATH.forEach((p, idx) => {
+                let cell = document.createElement('div');
+                cell.style.top = (p[0] * CELL_PCT) + '%';
+                cell.style.left = (p[1] * CELL_PCT) + '%';
+                cell.style.width = CELL_PCT + '%';
+                cell.style.height = CELL_PCT + '%';
+                
+                let bgClass = 'bg-white';
+                if (idx === PLAYERS[0].offset) bgClass = 'bg-red-300';
+                else if (idx === PLAYERS[1].offset) bgClass = 'bg-green-300';
+                else if (idx === PLAYERS[2].offset) bgClass = 'bg-yellow-300';
+                else if (idx === PLAYERS[3].offset) bgClass = 'bg-blue-300';
+                
+                cell.className = `absolute border border-gray-300 ${bgClass} flex items-center justify-center font-bold`;
+                
+                if (SAFE_SQUARES.includes(idx)) {
+                    cell.innerHTML = '<span class="safe-star text-gray-500">★</span>';
+                }
+                
+                uiBoard.appendChild(cell);
+            });
+
+            // Draw Home Stretches
+            PLAYERS.forEach(player => {
+                let colors = ['bg-red-400', 'bg-green-400', 'bg-yellow-400', 'bg-blue-400'];
+                player.homePath.forEach(p => {
+                    let cell = document.createElement('div');
+                    cell.style.top = (p[0] * CELL_PCT) + '%';
+                    cell.style.left = (p[1] * CELL_PCT) + '%';
+                    cell.style.width = CELL_PCT + '%';
+                    cell.style.height = CELL_PCT + '%';
+                    cell.className = `absolute border border-gray-300/50 ${colors[player.id]} opacity-70`;
+                    uiBoard.appendChild(cell);
+                });
+            });
+
+            // Container for dynamic tokens
+            let tokenLayer = document.createElement('div');
+            tokenLayer.id = 'token-layer';
+            tokenLayer.className = 'absolute inset-0 pointer-events-none';
+            uiBoard.appendChild(tokenLayer);
+        }
+
+        function showSetup() {
+            document.getElementById('setup-overlay').classList.remove('hidden');
+        }
+
+        function startGame() {
+            const types = [
+                document.getElementById('p0-type').value,
+                document.getElementById('p1-type').value,
+                document.getElementById('p2-type').value,
+                document.getElementById('p3-type').value
+            ];
+            
+            const activeCount = types.filter(t => t !== 'none').length;
+            if (activeCount < 2) {
+                document.getElementById('setup-error').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('setup-error').classList.add('hidden');
+            document.getElementById('setup-overlay').classList.add('hidden');
+
+            for (let i = 0; i < 4; i++) {
+                PLAYERS[i].type = types[i];
+                let statDiv = document.getElementById(`stat-${i}`);
+                if (types[i] === 'none') {
+                    statDiv.classList.add('opacity-30', 'grayscale');
+                } else {
+                    statDiv.classList.remove('opacity-30', 'grayscale');
+                }
+            }
+            
+            initGame();
+        }
+
+        function initGame() {
+            state.turn = 0;
+            while(PLAYERS[state.turn].type === 'none' && state.turn < 3) state.turn++;
+
+            state.dice = null;
+            state.phase = 'ROLL';
+            state.consecutiveSixes = 0;
+            state.tokens = [
+                [0, 0, 0, 0], // Red
+                [0, 0, 0, 0], // Green
+                [0, 0, 0, 0], // Yellow
+                [0, 0, 0, 0]  // Blue
+            ];
+            
+            drawBoardBackground();
+            updateUI();
+            renderTokens();
+            updateScoreboard();
+        }
+
+        // --- RENDERING ---
+        function getLogicalCoord(pIdx, progress, tIdx) {
+            if (progress === 0) return PLAYERS[pIdx].baseCoords[tIdx];
+            if (progress <= 51) {
+                let pathIdx = (PLAYERS[pIdx].offset + progress - 1) % 52;
+                return PATH[pathIdx];
+            }
+            if (progress <= 56) return PLAYERS[pIdx].homePath[progress - 52];
+            return CENTER; // 57 = finished
+        }
+
+        function renderTokens() {
+            const tokenLayer = document.getElementById('token-layer');
+            tokenLayer.innerHTML = '';
+            
+            // Group tokens by cell to handle overlap
+            let occupied = {};
+
+            // Determine valid moves (if in move phase) to highlight them
+            let validMoves = [];
+            if (state.phase === 'MOVE') {
+                validMoves = getValidMoves(state.turn, state.dice);
+            }
+
+            for (let p = 0; p < 4; p++) {
+                if (PLAYERS[p].type === 'none') continue; // Skip rendering inactive players
+
+                for (let t = 0; t < 4; t++) {
+                    let progress = state.tokens[p][t];
+                    if (progress === 57) continue; // Don't render finished tokens (or render them stacked in center)
+                    
+                    let [r, c] = getLogicalCoord(p, progress, t);
+                    let key = `${r},${c}`;
+                    if (!occupied[key]) occupied[key] = [];
+                    
+                    let isClickable = validMoves.some(v => v.pIdx === p && v.tIdx === t);
+                    
+                    occupied[key].push({ p, t, progress, isClickable });
+                }
+            }
+
+            // Draw tokens with offset logic for sharing cells
+            for (let key in occupied) {
+                let group = occupied[key];
+                let [r, c] = key.split(',').map(Number);
+                
+                group.forEach((tData, i) => {
+                    let tokenEl = document.createElement('div');
+                    let pData = PLAYERS[tData.p];
+                    
+                    let cssClasses = `token absolute w-[4.5%] h-[4.5%] rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.5)] border-2 border-white/90 z-10`;
+                    
+                    if (tData.isClickable) {
+                        cssClasses += ` valid-move pointer-events-auto`;
+                        tokenEl.style.color = pData.hex; // For the glow color
+                        tokenEl.onclick = () => executeMove(tData.p, tData.t);
+                    }
+                    
+                    tokenEl.className = cssClasses;
+                    
+                    // Inner gradient for 3D effect
+                    tokenEl.style.background = `radial-gradient(circle at 30% 30%, ${pData.hex}, #000 150%)`;
+                    
+                    // Position centering
+                    tokenEl.style.top = `${(r + 0.5) * CELL_PCT}%`;
+                    tokenEl.style.left = `${(c + 0.5) * CELL_PCT}%`;
+                    
+                    // Handle overlap transforms
+                    let tx = -50, ty = -50, scale = 1;
+                    if (group.length > 1 && tData.progress > 0) {
+                        scale = 0.75;
+                        let len = group.length;
+                        // Simple offset logic based on count
+                        if (len === 2) { tx += (i === 0 ? -25 : 25); }
+                        else if (len === 3) { 
+                            tx += (i === 0 ? -20 : (i === 1 ? 20 : 0)); 
+                            ty += (i === 2 ? 20 : -15); 
+                        }
+                        else { 
+                            tx += (i % 2 === 0 ? -20 : 20); 
+                            ty += (i < 2 ? -20 : 20); 
+                        }
+                        tokenEl.style.zIndex = 10 + i;
+                    }
+                    
+                    tokenEl.style.transform = `translate(${tx}%, ${ty}%) scale(${scale})`;
+                    tokenLayer.appendChild(tokenEl);
+                });
+            }
+        }
+
+        // --- DICE UI ---
+        function renderDice(val) {
+            uiDiceFace.innerHTML = '';
+            if (!val) return;
+            
+            // Grid positions for dots on a 3x3 dice face
+            const dotsMap = {
+                1: [4],
+                2: [0, 8],
+                3: [0, 4, 8],
+                4: [0, 2, 6, 8],
+                5: [0, 2, 4, 6, 8],
+                6: [0, 2, 3, 5, 6, 8]
+            };
+            
+            for(let i=0; i<9; i++) {
+                let div = document.createElement('div');
+                if (dotsMap[val].includes(i)) {
+                    div.className = 'bg-slate-800 rounded-full shadow-inner';
+                }
+                uiDiceFace.appendChild(div);
+            }
+        }
+
+        function updateUI() {
+            let pData = PLAYERS[state.turn];
+            uiStatus.innerText = `${pData.color}'s Turn ${pData.type === 'bot' ? '🤖' : ''}`;
+            uiStatus.className = `px-6 py-2 rounded-full font-bold text-white shadow-lg transition-colors ${pData.css}`;
+            
+            if (state.phase === 'ROLL') {
+                uiMessage.innerText = `${pData.type === 'bot' ? 'Bot is rolling...' : 'Roll the dice!'}`;
+                uiDiceBtn.disabled = pData.type === 'bot'; // Disable button for bots
+                if (pData.type === 'human') {
+                    uiDiceBtn.classList.add('animate-pulse');
+                } else {
+                    uiDiceBtn.classList.remove('animate-pulse');
+                    // Trigger bot roll automatically
+                    setTimeout(performRoll, 800);
+                }
+            } else if (state.phase === 'MOVE') {
+                uiMessage.innerText = pData.type === 'bot' ? `Bot is moving...` : `Select a ${pData.color} token to move ${state.dice}.`;
+                uiDiceBtn.disabled = true;
+                uiDiceBtn.classList.remove('animate-pulse');
+            } else {
+                uiDiceBtn.disabled = true;
+                uiDiceBtn.classList.remove('animate-pulse');
+            }
+            
+            renderDice(state.dice);
+        }
+
+        function updateScoreboard() {
+            for (let i = 0; i < 4; i++) {
+                let finished = state.tokens[i].filter(p => p === 57).length;
+                document.getElementById(`score-${i}`).innerText = `${finished}/4 Home`;
+            }
+        }
+
+        // --- LOGIC ---
+        uiDiceBtn.onclick = () => {
+            if (state.phase === 'ROLL' && PLAYERS[state.turn].type === 'human') {
+                performRoll();
+            }
+        };
+
+        async function performRoll() {
+            if (state.phase !== 'ROLL') return;
+            
+            state.phase = 'ANIMATING';
+            uiDiceBtn.disabled = true;
+            uiDiceBtn.classList.remove('animate-pulse');
+            uiDiceBtn.classList.add('rolling');
+            
+            // Rapid visual rolling
+            let rolls = 0;
+            let rollInterval = setInterval(() => {
+                renderDice(Math.floor(Math.random() * 6) + 1);
+                rolls++;
+                if (rolls > 10) clearInterval(rollInterval);
+            }, 50);
+
+            await sleep(500);
+            uiDiceBtn.classList.remove('rolling');
+            
+            // Final roll
+            state.dice = Math.floor(Math.random() * 6) + 1;
+            renderDice(state.dice);
+            
+            uiMessage.innerText = `Rolled a ${state.dice}!`;
+            await sleep(500);
+
+            if (state.dice === 6) {
+                state.consecutiveSixes++;
+                if (state.consecutiveSixes === 3) {
+                    uiMessage.innerText = "Three 6s! Turn skipped.";
+                    await sleep(1500);
+                    nextTurn();
+                    return;
+                }
+            } else {
+                state.consecutiveSixes = 0;
+            }
+
+            processPostRoll();
+        };
+
+        function getValidMoves(pIdx, diceVal) {
+            let valid = [];
+            let tokens = state.tokens[pIdx];
+            
+            tokens.forEach((progress, tIdx) => {
+                if (progress === 0 && diceVal === 6) {
+                    valid.push({ pIdx, tIdx });
+                } else if (progress > 0 && progress + diceVal <= 57) {
+                    valid.push({ pIdx, tIdx });
+                }
+            });
+            return valid;
+        }
+
+        async function processPostRoll() {
+            let validMoves = getValidMoves(state.turn, state.dice);
+
+            if (validMoves.length === 0) {
+                uiMessage.innerText = "No valid moves available.";
+                await sleep(1500);
+                nextTurn();
+            } else if (validMoves.length === 1 || PLAYERS[state.turn].type === 'bot') {
+                // Auto move or Bot move
+                state.phase = 'ANIMATING';
+                let move = validMoves.length === 1 ? validMoves[0] : chooseBotMove(validMoves);
+                
+                if (PLAYERS[state.turn].type === 'bot' && validMoves.length > 1) {
+                    await sleep(800); // Give bot "thinking" time
+                } else if (validMoves.length === 1) {
+                    await sleep(400); // Slight pause before auto moving
+                }
+                
+                executeMove(move.pIdx, move.tIdx);
+            } else {
+                state.phase = 'MOVE';
+                updateUI();
+                renderTokens();
+            }
+        }
+
+        // Extremely simple AI to choose the best bot move
+        function chooseBotMove(validMoves) {
+            let pIdx = state.turn;
+            let bestMove = null;
+            let bestScore = -1;
+
+            for (let m of validMoves) {
+                let tIdx = m.tIdx;
+                let startProgress = state.tokens[pIdx][tIdx];
+                let targetProgress = startProgress === 0 ? 1 : startProgress + state.dice;
+                let score = 0;
+
+                if (targetProgress === 57) score += 1000; // Winning token is priority
+                if (startProgress === 0) score += 500; // Getting out of base is good
+
+                // Capture opponent logic
+                if (targetProgress >= 1 && targetProgress <= 51) {
+                    let currentPathIdx = (PLAYERS[pIdx].offset + targetProgress - 1) % 52;
+                    if (!SAFE_SQUARES.includes(currentPathIdx)) {
+                        for (let op = 0; op < 4; op++) {
+                            if (op === pIdx || PLAYERS[op].type === 'none') continue;
+                            for (let ot = 0; ot < 4; ot++) {
+                                let opProg = state.tokens[op][ot];
+                                if (opProg >= 1 && opProg <= 51) {
+                                    let opPathIdx = (PLAYERS[op].offset + opProg - 1) % 52;
+                                    if (opPathIdx === currentPathIdx) {
+                                        score += 800; // Capture opponent token is high priority
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                score += targetProgress; // Tie-breaker: move furthest token along
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = m;
+                }
+            }
+            return bestMove || validMoves[0];
+        }
+
+        async function executeMove(pIdx, tIdx) {
+            state.phase = 'ANIMATING';
+            renderTokens(); // Remove clickable highlights immediately
+            
+            let startProgress = state.tokens[pIdx][tIdx];
+            let targetProgress = startProgress === 0 ? 1 : startProgress + state.dice;
+            let steps = targetProgress - startProgress;
+
+            // Step-by-step animation
+            for (let i = 0; i < steps; i++) {
+                state.tokens[pIdx][tIdx]++;
+                renderTokens();
+                await sleep(250); // Animation speed
+            }
+
+            // After move finishes
+            let finalProgress = state.tokens[pIdx][tIdx];
+            let bonusTurn = false;
+
+            // 1. Check Capture
+            if (finalProgress >= 1 && finalProgress <= 51) {
+                let currentPathIdx = (PLAYERS[pIdx].offset + finalProgress - 1) % 52;
+                if (!SAFE_SQUARES.includes(currentPathIdx)) {
+                    // Look for opponent tokens
+                    let captured = false;
+                    for (let op = 0; op < 4; op++) {
+                        if (op === pIdx) continue;
+                        for (let ot = 0; ot < 4; ot++) {
+                            let opProg = state.tokens[op][ot];
+                            if (opProg >= 1 && opProg <= 51) {
+                                let opPathIdx = (PLAYERS[op].offset + opProg - 1) % 52;
+                                if (opPathIdx === currentPathIdx) {
+                                    // Capture!
+                                    state.tokens[op][ot] = 0; // Send home
+                                    captured = true;
+                                }
+                            }
+                        }
+                    }
+                    if (captured) {
+                        uiMessage.innerText = "Captured opponent!";
+                        bonusTurn = true;
+                        renderTokens();
+                        await sleep(1000);
+                    }
+                }
+            }
+
+            // 2. Check Finish
+            if (finalProgress === 57) {
+                uiMessage.innerText = "Token reached home!";
+                bonusTurn = true;
+                updateScoreboard();
+                renderTokens();
+                await sleep(1000);
+                checkWin();
+            }
+
+            // 3. Determine Next Turn
+            if (bonusTurn || state.dice === 6) {
+                if (state.dice === 6) uiMessage.innerText = "Rolled a 6! Extra turn.";
+                await sleep(1000);
+                state.phase = 'ROLL';
+                updateUI();
+            } else {
+                nextTurn();
+            }
+        }
+
+        function nextTurn() {
+            // Find next active player who hasn't won yet
+            let iterations = 0;
+            do {
+                state.turn = (state.turn + 1) % 4;
+                iterations++;
+                if(iterations > 4) break; // Infinite loop safety
+            } while (PLAYERS[state.turn].type === 'none' || isPlayerDone(state.turn));
+
+            state.consecutiveSixes = 0;
+            state.dice = null;
+            state.phase = 'ROLL';
+            updateUI();
+            renderTokens();
+        }
+
+        function isPlayerDone(pIdx) {
+            return state.tokens[pIdx].every(p => p === 57);
+        }
+
+        function checkWin() {
+            if (isPlayerDone(state.turn)) {
+                let winOverlay = document.getElementById('win-overlay');
+                let winText = document.getElementById('win-text');
+                winText.innerText = `${PLAYERS[state.turn].color} WINS!`;
+                winText.style.color = PLAYERS[state.turn].hex;
+                winOverlay.classList.remove('hidden');
+                winOverlay.classList.add('flex');
+            }
+        }
+
+        // --- START ---
+        showSetup();
+
+    </script>
+</body>
+</html>
